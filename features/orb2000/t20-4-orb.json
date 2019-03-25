@@ -1,0 +1,16 @@
+{
+  "asift": false,
+  "camera": null,
+  "feature": "orb",
+  "grid": false,
+  "images": "images/T",
+  "mask": null,
+  "nFeatures": 2000,
+  "output": "features/orb2000",
+  "pose": null,
+  "save": true,
+  "show": false,
+  "tilt": 3,
+  "filename": "images/T\\t20-4.jpg",
+  "result": "features/orb2000\\t20-4-orb.npz"
+}

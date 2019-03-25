@@ -1,0 +1,16 @@
+{
+  "asift": false,
+  "camera": null,
+  "feature": "orb",
+  "grid": false,
+  "images": "images/A",
+  "mask": null,
+  "nFeatures": 8000,
+  "output": "features/orb8000",
+  "pose": null,
+  "save": true,
+  "show": false,
+  "tilt": 3,
+  "filename": "images/A\\s11-1.jpg",
+  "result": "features/orb8000\\s11-1-orb.npz"
+}

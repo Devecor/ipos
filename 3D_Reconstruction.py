@@ -11,7 +11,7 @@ import core
 '''docstring'''
 
 
-def uv2XYZ(pts1, pts2, cameraMatrix, R, T, imageSize, **kwargs):
+def reconstruct(pts1, pts2, cameraMatrix, R, T, imageSize, **kwargs):
     '''实现从像素坐标到空间坐标的转换
     Parameters
     -----------
@@ -105,7 +105,7 @@ def pixels2normalized(points, cameraMatrix):
         nx = (x - cameraMatrix[0][2]) / cameraMatrix[0][0]
         ny = (y - cameraMatrix[1][2]) / cameraMatrix[1][1]
         norm_coord.append([nx, ny])
-    return np.array(norm_coord, np.float32)
+    return np.array(norm_coord, np.float64)
 
 
 if __name__ == '__main__':
@@ -152,19 +152,21 @@ if __name__ == '__main__':
     filename = 'matches/s11-1-match-s11-1a.npy'
     pts1, pts2 = np.load(filename)
 
-    pts1, pts2, point3d, imageSize, P1, P2 = uv2XYZ(
+    pts1, pts2, point3d, imageSize, P1, P2 = reconstruct(
         pts1, pts2, K.reshape((3, 3)), R, T, (3000, 4000))
 
     # 过滤3d点
+    # filtered_p3d, filtered_pts1, filtered_pts2 = filter_p3d_dist(
+    #     point3d, pts1, pts2, z_prob=570)
     filtered_p3d, filtered_pts1, filtered_pts2 = filter_p3d_dist(
-        point3d, pts1, pts2, z_prob=570)
+        point3d, pts1, pts2)
     del pts1, pts2, point3d
 
     savefile = filename.split('.')[0] + '-rec3d'
     np.save(savefile, np.array([filtered_pts1, filtered_pts2, filtered_p3d]))
 
-    p3d = np.array([i[0] for i in filtered_p3d], np.float32)
-    p2d = np.array(filtered_pts1, np.float32)
+    p3d = np.array([i[0] for i in filtered_p3d], np.float64)
+    p2d = np.array(filtered_pts1, np.float64)
     fig = plt.figure()
     ax1 = core.plot_scatter3d(p3d, fig, sub=(1, 2, 2))
     ax2 = core.plot_scatter2d(p2d, fig, sub=(1, 2, 1))

@@ -11,7 +11,9 @@ __author__: devecor
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
+
 import argparse
+import glob
 
 import core
 
@@ -184,19 +186,28 @@ if __name__ == '__main__':
     parser.add_argument('--show', action='store_true', help='显示匹配结果')
     parser.add_argument('--save', action='store_true', help='是否保存结果')
     parser.add_argument('--output', metavar='dir', help='输出路径')
-    parser.add_argument('--K', metavar='float', help='内参矩阵：cx, cy, fx, fy')
+    parser.add_argument('--K1', metavar='float', help='内参矩阵：cx, cy, fx, fy')
+    parser.add_argument('--K2', metavar='float', help='内参矩阵：cx, cy, fx, fy')
+    parser.add_argument('--distCoeffs1', metavar='float', help='畸变参数: k1,k2,p1,p2')
+    parser.add_argument('--distCoeffs2', metavar='float', help='畸变参数: k1,k2,p1,p2')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args(
         'images/A/s11-1.jpg images/A/s11-1a.jpg --save --output matches \
---K 3048,3048,1500,2000 --debug'.split())
+--K1 3178.2,3179.4,1497.5,2027.3 --K2 3130.4,3128.8,1487.6,2013.3 --debug \
+--distCoeffs1 0.1692,-0.5744,0,0 \
+--distCoeffs2 0.1520,-0.4518,0,0'.split()
+        )
 # --K 3123.8,3122.3,1497.6,2022.3
+# ' --save --output matches \images/ref1.jpg images/ref2.jpg
+# --K 3048,3048,1500,2000 --debug'.split()
 
     # 读取图片
-
-    ref_img1 = cv.imread('images/A/s11-1.jpg', flags=cv.IMREAD_GRAYSCALE)
-    ref_img2 = cv.imread('images/A/s11-1a.jpg', flags=cv.IMREAD_GRAYSCALE)
+    img1, img2 = args.img
+    ref_img1 = cv.imread(img1, flags=cv.IMREAD_GRAYSCALE)
+    ref_img2 = cv.imread(img2, flags=cv.IMREAD_GRAYSCALE)
     # tes_img1 = cv.imread('images/T/t20-3.jpg', flags=cv.IMREAD_GRAYSCALE)
     # tes_img2 = cv.imread('images/T/t20-4.jpg', flags=cv.IMREAD_GRAYSCALE)
+    assert ref_img1 is not None and ref_img2 is not None, '图片不存在!'
 
     # 特征提取与匹配
     matches, kp1, kp2, des1, des2 = match(ref_img1, ref_img2, args)
@@ -206,7 +217,7 @@ if __name__ == '__main__':
 
     # 过滤
     pt1, pt2, kp_pairs, mask, filtered_matches = filter_match(
-        kp1, kp2, matches.copy(), ratio=0.6)
+        kp1, kp2, matches.copy(), ratio=0.5)
     # pt1_t, pt2_t, kp_pairs_t, mask_t, filtered_matches_t = filter_match(
     #     kp1_t, kp2_t, matches_t.copy(), ratio=0.6
     # )
@@ -223,27 +234,25 @@ if __name__ == '__main__':
     np.save(filtered_res_path.split('.')[0], (pt1, pt2))
     # np.save('matches/s11-1-match-t20-3', (pt1_t, pt2_t))
     # 组装内参矩阵
-    f_x = 3048
-    f_y = 3048
-    c_x = 1500
-    c_y = 2000
-    K = np.float64([[f_x,  0,  c_x],
-                    [0,   f_y, c_y],
-                    [0,    0,   1]])
+    K1 = core.getIntrinsicMat(args.K1)
+    K2 = core.getIntrinsicMat(args.K2)
+    K = 0.5 * (K1 + K2)
 
-    retval, mask = cv.findEssentialMat(pt1, pt2, K)
-    del mask
+    E, mask_E = cv.findEssentialMat(pt1, pt2, K)
 
-    E, K1, K2 = retval.copy(), K, K  # 待优化
-    distCoeffs1, distCoeffs2 = np.float64([1] * 4), np.float64([1] * 4)
+    H, mask_H = cv.findHomography(pt1, pt2, cv.RANSAC, 5.0)
+    dst = cv.perspectiveTransform(pt2.reshape(-1, 1, 2), H)
+
+    distCoeffs1 = np.array([float(i) for i in args.distCoeffs1.split(',')], np.float64)
+    distCoeffs2 = np.array([float(i) for i in args.distCoeffs2.split(',')], np.float64)
 
     retval, R, t, mask = cv.recoverPose(E, pt1, pt2, K)
     imageSize = (3000, 4000)
     ############################################
-    R = np.array([[1, 0, 0],
-                  [0, 1, 0],
-                  [0, 0, 1]], np.float64)
-    t = np.array([1, 0, 0], np.float64)
+    # R = np.array([[1, 0, 0],
+    #               [0, 1, 0],
+    #               [0, 0, 1]], np.float64)
+    # t = np.array([1, 0, 0], np.float64)
     ############################################
 
     R1, R2, P1, P2, Q, validPixROI1, validPixROI2 = cv.stereoRectify(

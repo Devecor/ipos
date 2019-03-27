@@ -19,7 +19,12 @@ c_y = 2000
 K_zero = np.float64([[f_x,  0,  c_x],
                     [0,   f_y, c_y],
                     [0,    0,   1]])
-distCoeffs_zero = np.array([1] * 4, np.float32)
+distCoeffs_zero = np.array([0] * 4, np.float64)
+
+K1 = '3178.2,3179.4,1497.5,2027.3'
+K2 = '3130.4,3128.8,1487.6,2013.3'
+distCoeffs1 = np.array([0.1692, -0.5744, 0, 0], np.float64) 
+distCoeffs2 = np.array([0.1520, -0.4518, 0, 0], np.float64)
 
 
 def get_filenames(path, name='*.txt'):
@@ -116,3 +121,21 @@ def plot_response_coord(ax1, ax2, fig):
     # fig.add_axes(ax1)
     # fig.add_axes(ax2)
     plt.show()
+
+
+def getIntrinsicMat(string=None):
+    f_x, f_y, c_x, c_y = [float(i) for i in string.split(',')]
+    K = np.float64([[f_x,  0,  c_x],
+                    [0,   f_y, c_y],
+                    [0,    0,   1]])
+    return K
+
+
+def pixels2normalized(points, cameraMatrix):
+    '''将像素坐标转换为归一化坐标'''
+    norm_coord = []
+    for i, (x, y) in enumerate(points):
+        nx = (x - cameraMatrix[0][2]) / cameraMatrix[0][0]
+        ny = (y - cameraMatrix[1][2]) / cameraMatrix[1][1]
+        norm_coord.append([nx, ny])
+    return np.array(norm_coord, np.float64)

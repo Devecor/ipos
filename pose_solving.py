@@ -56,9 +56,13 @@ if __name__ == '__main__':
                         help='相机内参矩阵')
     parser.add_argument('--distCoeffs', help='相机畸变参数')
     args = parser.parse_args(
-        'matches/s11-1-match-s11-1a.npy \
+#         'matches/ref1-match-ref2.npy \
+# matches/ref1-match-ref2-rec3d.npy'.split()
+'matches/s11-1-match-s11-1a.npy \
 matches/s11-1-match-s11-1a-rec3d.npy'.split()
     )
+    'matches/s11-1-match-s11-1a.npy \
+matches/s11-1-match-s11-1a-rec3d.npy'.split()
 # 'matches/s11-1-match-t20-3.npy \
 # matches/s11-1-match-s11-1a-rec3d.npy'.split()
     pt1_q, pt2_q = np.load(args.query)
@@ -68,11 +72,11 @@ matches/s11-1-match-s11-1a-rec3d.npy'.split()
         (pt1_q, pt2_q), (pt1_r, pt2_r, pt_3d)
     )
 
-    K = core.K_zero
-    distCoeffs = core.distCoeffs_zero
+    K = 0.5 * (core.getIntrinsicMat(core.K1) + core.getIntrinsicMat(core.K2))
+    distCoeffs = 0.5 * (core.distCoeffs1 + core.distCoeffs2)
 
-    retval, rvec, tvec = cv.solvePnP(pt_3d, pt2_q, K,
-                                     distCoeffs, flags=cv.SOLVEPNP_ITERATIVE)
+    retval, rvec, tvec, inliers = cv.solvePnPRansac(
+        pt_3d, pt2_q, K, distCoeffs, flags=cv.SOLVEPNP_EPNP)
 
     rotation = cv.Rodrigues(rvec)  # 转换为旋转矩阵
     # 计算旋转矩阵特征值和特征向量
@@ -84,5 +88,5 @@ matches/s11-1-match-s11-1a-rec3d.npy'.split()
     print('revc is\n{}'.format(rvec))
     print('tvec is\n{}'.format(tvec))
     print('rotation is\n{}'.format(rotation[0]))
-    print('pose is\n {}'.format(world_pose))
+    print('pose is\n{}'.format(world_pose))
     pass

@@ -79,14 +79,16 @@ matches/s11-1-match-s11-1a-rec3d.npy'.split()
         pt_3d, pt2_q, K, distCoeffs, flags=cv.SOLVEPNP_EPNP)
 
     rotation = cv.Rodrigues(rvec)  # 转换为旋转矩阵
-    # 计算旋转矩阵特征值和特征向量
-    # retval, eigenvalue, eigenvector = cv.eigen(rotation[0])
-    # 计算平移向量的特征值
-    # retval = cv.eigenNonSymmetric(tvec)
-    world_pose = -np.dot(np.linalg.inv(rotation[0]), tvec)
+    nv = np.matrix(rotation[0]) * np.float64([0, 0, 1]).reshape(3, 1)
+    yaw = np.arctan2(nv[0], nv[2])
+    # 这是相对参考相机拍摄角度的偏转，顺时针为正值
+    angle = yaw.A.ravel()[0] * 180 / np.pi
+    pose = -tvec.ravel()
 
-    print('revc is\n{}'.format(rvec))
+    theta_x, theta_y, theta_z = core.rotationMatrixToEulerAngles(rotation[0])
+    yaw_ = theta_y * 180 / np.pi
+
+    print('rvec is\n{}'.format(rvec))
     print('tvec is\n{}'.format(tvec))
     print('rotation is\n{}'.format(rotation[0]))
-    print('pose is\n{}'.format(world_pose))
     pass

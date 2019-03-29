@@ -4,6 +4,7 @@
 '''some functions of tools'''
 import os
 import sys
+import math
 
 # This import registers the 3D projection, but is otherwise unused.
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
@@ -139,3 +140,34 @@ def pixels2normalized(points, cameraMatrix):
         ny = (y - cameraMatrix[1][2]) / cameraMatrix[1][1]
         norm_coord.append([nx, ny])
     return np.array(norm_coord, np.float64)
+
+
+# Checks if a matrix is a valid rotation matrix.
+def isRotationMatrix(R):
+    Rt = np.transpose(R)
+    shouldBeIdentity = np.dot(Rt, R)
+    I_ = np.identity(3, dtype=R.dtype)
+    n = np.linalg.norm(I_ - shouldBeIdentity)
+    return n < 1e-6
+
+
+def rotationMatrixToEulerAngles(R):
+    '''Calculates rotation matrix to euler angles
+    The result is the same as MATLAB except the order
+    of the euler angles ( x and z are swapped ).'''
+    assert(isRotationMatrix(R))
+
+    sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
+
+    singular = sy < 1e-6
+
+    if not singular:
+        x = math.atan2(R[2, 1], R[2, 2])
+        y = math.atan2(-R[2, 0], sy)
+        z = math.atan2(R[1, 0], R[0, 0])
+    else:
+        x = math.atan2(-R[1, 2], R[1, 1])
+        y = math.atan2(-R[2, 0], sy)
+        z = 0
+
+    return np.array([x, y, z])

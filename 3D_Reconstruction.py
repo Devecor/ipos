@@ -54,7 +54,7 @@ def reconstruct(pts1, pts2, cameraMatrix, distCoeffs, imageSize,
 def filter_p3d_dist(p3d, pts1, pts2, z_prob=None, z_threshold_lim=1000,
                     z_threshold_prob=30):
     '''过滤3d空间点, 过滤条件为:
-    1. 出现在照片中的空间点, 必在相机之前, 即 Z>0
+    1. 出现在照片中的空间点, 必在相机之前, 即 Z > 0
     2. 室内场景的空间点在任意方向上不会超过10m
     3. 室内场景的特征点多集中于墙壁上, 即Z会在最可能的值附近
 
@@ -110,6 +110,7 @@ if __name__ == '__main__':
                         help='畸变参数: k1,k2,p1,p2')
     parser.add_argument('--distCoeffs2', metavar='float',
                         help='畸变参数: k1,k2,p1,p2')
+    parser.add_argument('--show', action='store_true')
     args = parser.parse_args('-kpair matches/s11-1-match-s11-1a.npy'.split())
 # -K1 3123.8 3122.3 1497.6 2022.3
     # pts1, pts2 = args.pt1.pt, args.pt2.pt  matches/ref1-match-ref2.npy
@@ -128,27 +129,31 @@ if __name__ == '__main__':
                                np.float64)
         distCoeffs2 = np.array([float(i) for i in args.distCoeffs2.split(',')],
                                np.float64)
-    distCoeffs = np.array([distCoeffs1, distCoeffs2])
+    distCoeffs = np.array([core.distCoeffs_zero, core.distCoeffs_zero])
 
     filename = args.kp_pair
     pts1, pts2 = np.load(filename)
     assert len(pts1) > 0 and len(pts2) > 0, '2d点为空!'
 
     pts1, pts2, point3d, imageSize, P1, P2 = reconstruct(
-        pts1, pts2, np.array([K1, K2]), distCoeffs, (3000, 4000))
+        pts1, pts2, np.array([core.K_zero, core.K_zero]), distCoeffs, (3000, 4000))
+
+    # mask = core.isPrecisePt3d(pts1, point3d, K, np.eye(3, 3), np.eye(3, 1))
 
     # 过滤3d点
     # filtered_p3d, filtered_pts1, filtered_pts2 = filter_p3d_dist(
     #     point3d, pts1, pts2, z_prob=570)
-    filtered_p3d, filtered_pts1, filtered_pts2 = filter_p3d_dist(
-        point3d, pts1, pts2)
-    del pts1, pts2, point3d
+    point3d, pts1, pts2 = filter_p3d_dist(
+        point3d, pts1, pts2, z_threshold_lim=800)
+
+    # mask = core.isPrecisePt3d(filtered_pts1, filtered_p3d, K,
+    #                           np.eye(3, 3), np.eye(3, 1))
 
     savefile = filename.split('.')[0] + '-rec3d'
-    np.save(savefile, np.array([filtered_pts1, filtered_pts2, filtered_p3d]))
+    np.save(savefile, np.array([[pts1, pts2], point3d]))
 
-    p3d = np.array([i[0] for i in filtered_p3d], np.float64)
-    p2d = np.array(filtered_pts1, np.float64)
+    p3d = np.array([i[0] for i in point3d], np.float64)
+    p2d = np.array(pts1, np.float64)
     fig = plt.figure()
     ax1 = core.plot_scatter3d(p3d, fig, sub=(1, 2, 2))
     ax2 = core.plot_scatter2d(p2d, fig, sub=(1, 2, 1))

@@ -5,6 +5,7 @@
 import os
 import sys
 import math
+import logging
 
 # This import registers the 3D projection, but is otherwise unused.
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
@@ -12,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.axes3d import get_test_data
 from matplotlib import cm
+import cv2 as cv
 
 f_x = 3048
 f_y = 3048
@@ -71,6 +73,7 @@ def plot_scatter3d(p3d, fig, show=False, sub=(1, 1, 1)):
     ----------
     fig : fig = plt.figure()
     '''
+    assert len(p3d) > 0, 'make sure len(p3d) > 0 !'
     ax = fig.add_subplot(*sub, projection='3d')
     np.random.seed(19680801)
 
@@ -171,3 +174,76 @@ def rotationMatrixToEulerAngles(R):
         z = 0
 
     return np.array([x, y, z])
+
+
+def filter_perspective(pt1, pt2, K=None, kp1=None, kp2=None, matches=None, flags=0):
+    '''根据匹配点在3维空间的透视关系过滤
+    parameter
+    ----------
+    flags : 指定使用何种透视关系进行过滤
+    '''
+    Fundamental = 0
+    Essential = 1
+    Homography = 2
+    if flags == 1 and K is None:
+        temp = input('falgs为1时必须指定K! 是否使用flags=2,继续运行程序(Y/N)?\n')
+        while True:
+            if temp == 'Y' or temp == 'y':
+                flags = 2
+                break
+            elif temp == 'N' or temp == 'n':
+                sys.exit('程序退出！')
+            else:
+                sys.stdout.write('请输入Y/N:\n')
+                temp = input()
+
+    if flags == Fundamental:
+        M, inlier = cv.findFundamentalMat(pt1, pt2, cv.FM_RANSAC, 2, 0.99)
+    elif flags == Essential:
+        M, inlier = cv.findEssentialMat(pt1, pt2, K, cv.RANSAC, 0.99, 2)
+    elif flags == Homography:
+        M, inlier = cv.findHomography(pt1, pt2, cv.RANSAC, 5)
+    pt1 = np.float64([pt1[i] for i, e in enumerate(inlier) if e == 1])
+    pt2 = np.float64([pt2[i] for i, e in enumerate(inlier) if e == 1])
+
+    if kp1 is None or kp2 is None or matches is None:
+        return pt1, pt2, None, None, None
+    else:
+        new_matches = []
+        new_kp1, new_kp2 = [], []
+        start_index = len(kp1)
+        for i, e in enumerate(pt1):
+            new_kp1.append(cv.KeyPoint(e[0], e[1], kp1[0].size))
+            new_kp2.append(cv.KeyPoint(pt2[i][0], pt2[i][1], kp1[0].size))
+            new_matches.append(cv.DMatch(i + start_index, i + start_index,
+                                         0, 1))
+        assert len(new_matches) == len(pt1), '遍历有bug'
+        return pt1, pt2, kp1 + new_kp1, kp2 + new_kp2, matches + new_matches
+
+
+def make_augmented_mat(m1, m2):
+    '''构建增广矩阵'''
+    return np.append(m1, m2, axis=1)
+
+
+def isPrecisePt3d(pt, pt3d, K, R, t, max_err=3):
+    '''判断2d点与3d点是否能够准确的对应, 返回掩码
+    max_err : 最大允许误差
+    '''
+    pt3d = cv.convertPointsToHomogeneous(np.float64(pt3d))
+    transition_mat = np.eye(3, 4)
+    R_t_augm = np.append(np.append(R, t, axis=1),
+                         np.float64([0, 0, 0, 1]).reshape((1, 4)), axis=0)
+    anal_2d = []
+    for i in pt3d:
+        point_2d = K.dot(transition_mat.dot(R_t_augm.dot(i.T)))
+        anal_2d.append(point_2d)
+    anal_2d = cv.convertPointsFromHomogeneous(np.float64(anal_2d))
+    mask = [0 for _ in range(len(pt))]
+    for i, e in enumerate(pt):
+        error = np.linalg.norm(anal_2d - e)
+        if error < 3:
+            mask[i] = 1
+    logging.basicConfig(level=logging.INFO)
+    logging.info('准确的3D点共有{}'.format(sum(mask)))
+    return mask

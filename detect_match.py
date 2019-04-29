@@ -7,15 +7,14 @@ Info
 ------
 __author__: devecor
 '''
+import core
 
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
 
 import argparse
-import glob
-
-import core
+import logging
 
 
 def ratio_test(matches, ratio=0.75):
@@ -143,15 +142,18 @@ def match(img1, img2, config, kpdes1=None, kpdes2=None,
     return matches, kp1, kp2, des1, des2
 
 
-def filter_match(kp1, kp2, matches, ratio=0.75):
+def filter_match(kp1, kp2, matches, ratio=0.75, indirect=False):
     '''对匹配结果进行过滤, 将改变匹配结果
     parameters
     -----------
     kp1, kp2 : 关键点列表
 
-    matches : 原始匹配结果
+    matches : 原始匹配结果, flannBasedMatch
+    列表形式， 每个列表元素是一个DMatch实例
 
     ratio : 过滤条件, 默认为0.75
+
+    indirect : 选择是否间接过滤
 
     return
     --------
@@ -164,42 +166,54 @@ def filter_match(kp1, kp2, matches, ratio=0.75):
     filtered_matches : 过滤之后的匹配结果
     '''
     mkp1, mkp2 = [], []
-    mask = [[0, 0] for i in range(len(matches))]
+    mask1 = [0 for i in range(len(kp1))]
+    mask1 = [mask1, mask1.copy()]
+    mask2 = [[0, 0] for i in range(len(matches))]
     for i, m in enumerate(matches):
         if len(m) >= 2 and m[0].distance < m[1].distance * ratio:
             mkp1.append(kp1[m[0].queryIdx])
+            mask1[0][m[0].queryIdx] = 1
             mkp2.append(kp2[m[0].trainIdx])
-            mask[i] = [1, 0]
+            mask1[1][m[0].trainIdx] = 1
+            mask2[i] = [1, 0]
     pt1 = np.float64([kp.pt for kp in mkp1])
     pt2 = np.float64([kp.pt for kp in mkp2])
-    kp_pairs = list(zip(mkp1, mkp2))
+    kp_pairs = [mkp1, mkp2]
     filtered_matches = [e[0] for i, e in enumerate(matches)
-                        if mask[i] == [1, 0]]
-    return pt1, pt2, list(kp_pairs), mask, filtered_matches
+                        if mask2[i] == [1, 0]]
+    if indirect is False:
+        return pt1, pt2, kp_pairs, mask2, filtered_matches
+    else:
+        return kp1, kp2, matches, mask1, mask2
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='detect_match')
-    parser.add_argument('img', nargs=2, metavar='image', help='一对照片')
+    parser.add_argument('img', metavar='imagepair', nargs=2, help='一对照片')
     parser.add_argument('-nfeatures', default=8000, type=int, help='提取特征点数')
     parser.add_argument('--show', action='store_true', help='显示匹配结果')
     parser.add_argument('--save', action='store_true', help='是否保存结果')
-    parser.add_argument('--output', metavar='dir', help='输出路径')
+    parser.add_argument('--output', metavar='dir', help='输出路径, 仅当指定--save时有效')
     parser.add_argument('--K1', metavar='float', help='内参矩阵：cx, cy, fx, fy')
     parser.add_argument('--K2', metavar='float', help='内参矩阵：cx, cy, fx, fy')
-    parser.add_argument('--distCoeffs1', metavar='float', help='畸变参数: k1,k2,p1,p2')
-    parser.add_argument('--distCoeffs2', metavar='float', help='畸变参数: k1,k2,p1,p2')
+    parser.add_argument('--distCoeffs1', metavar='float', help='畸变参数: k1, k2, \
+p1, p2')
+    parser.add_argument('--distCoeffs2', metavar='float', help='畸变参数: k1, k2, \
+p1, p2')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args(
-        'images/A/s11-1.jpg images/A/s11-1a.jpg --save --output matches \
---K1 3178.2,3179.4,1497.5,2027.3 --K2 3130.4,3128.8,1487.6,2013.3 --debug \
---distCoeffs1 0.1692,-0.5744,0,0 \
---distCoeffs2 0.1520,-0.4518,0,0'.split()
+        'images/A/s11-1.jpg images/A/s11-1a.jpg --show --save --output matches'.split()
         )
 # --K 3123.8,3122.3,1497.6,2022.3
 # ' --save --output matches \images/ref1.jpg images/ref2.jpg
 # --K 3048,3048,1500,2000 --debug'.split()
+
+    # 'images/A/s11-1.jpg images/A/s11-1a.jpg --save --output matches \
+    # --K1 3178.2,3179.4,1497.5,2027.3 --K2 3130.4,3128.8,1487.6,2013.3 --debug \
+    # --distCoeffs1 0.1692,-0.5744,0,0 \
+    # --distCoeffs2 0.1520,-0.4518,0,0'.split()
+    logging.basicConfig(level=logging.INFO)
 
     # 读取图片
     img1, img2 = args.img
@@ -207,74 +221,37 @@ if __name__ == '__main__':
     ref_img2 = cv.imread(img2, flags=cv.IMREAD_GRAYSCALE)
     # tes_img1 = cv.imread('images/T/t20-3.jpg', flags=cv.IMREAD_GRAYSCALE)
     # tes_img2 = cv.imread('images/T/t20-4.jpg', flags=cv.IMREAD_GRAYSCALE)
-    assert ref_img1 is not None and ref_img2 is not None, '图片不存在!'
+    assert ref_img1 is not None and ref_img2 is not None, 'img not found!'
 
     # 特征提取与匹配
     matches, kp1, kp2, des1, des2 = match(ref_img1, ref_img2, args)
+    logging.info('原始提取特征: {}'.format(len(kp1)))
+
     # matches_t, kp1_t, kp2_t, des1_t, des2_t = match(
     #     ref_img1, tes_img1, args
     # )
 
-    # 过滤
+    # ratio test过滤
     pt1, pt2, kp_pairs, mask, filtered_matches = filter_match(
         kp1, kp2, matches.copy(), ratio=0.5)
     # pt1_t, pt2_t, kp_pairs_t, mask_t, filtered_matches_t = filter_match(
     #     kp1_t, kp2_t, matches_t.copy(), ratio=0.6
     # )
+    logging.info('ratio test 过滤后: {}'.format(len(pt1)))
+
+    # perspective过滤
+    pt1, pt2, kp1, kp2, filtered_matches = core.filter_perspective(
+        pt1, pt2, kp1=kp1, kp2=kp2,
+        matches=filtered_matches, flags=2)
+    logging.info('perspective过滤后: {}'.format(len(pt1)))
 
     if args.show:
-        show_matches(ref_img1, kp1, ref_img2, kp2, filtered_matches, mask=None)
+        show_matches(ref_img1, kp1, ref_img2, kp2, filtered_matches)
 
     # 保存过滤结果到图片
-    filtered_res_path = save_matches_to_img(ref_img1, kp1, ref_img2, kp2,
-                                            filtered_matches, config=args)
-    # filtered_res_path_t = save_matches_to_img(ref_img1, kp1_t, tes_img1, kp2_t,
-    #                                           matches_t, config=args)
+    path = save_matches_to_img(ref_img1, kp1, ref_img2, kp2,
+                               filtered_matches, config=args)
+
     # 保存过滤结果到文件
-    np.save(filtered_res_path.split('.')[0], (pt1, pt2))
-    # np.save('matches/s11-1-match-t20-3', (pt1_t, pt2_t))
-    # 组装内参矩阵
-    K1 = core.getIntrinsicMat(args.K1)
-    K2 = core.getIntrinsicMat(args.K2)
-    K = 0.5 * (K1 + K2)
-
-    E, mask_E = cv.findEssentialMat(pt1, pt2, K)
-
-    H, mask_H = cv.findHomography(pt1, pt2, cv.RANSAC, 5.0)
-    dst = cv.perspectiveTransform(pt2.reshape(-1, 1, 2), H)
-
-    distCoeffs1 = np.array([float(i) for i in args.distCoeffs1.split(',')], np.float64)
-    distCoeffs2 = np.array([float(i) for i in args.distCoeffs2.split(',')], np.float64)
-
-    retval, R, t, mask = cv.recoverPose(E, pt1, pt2, K)
-    imageSize = (3000, 4000)
-    ############################################
-    # R = np.array([[1, 0, 0],
-    #               [0, 1, 0],
-    #               [0, 0, 1]], np.float64)
-    # t = np.array([1, 0, 0], np.float64)
-    ############################################
-
-    R1, R2, P1, P2, Q, validPixROI1, validPixROI2 = cv.stereoRectify(
-        K1, distCoeffs1, K2, distCoeffs2, imageSize, R, t)
-
-    point4d = cv.triangulatePoints(P1, P2, pt1.T, pt2.T)
-
-    point3d = cv.convertPointsFromHomogeneous(point4d.T)
-
-    p3d = [i[0] for i in point3d]
-    p2d = pt1
-    fig = plt.figure()
-    ax1 = core.plot_scatter3d(p3d, fig, sub=(1, 2, 2))
-    ax2 = core.plot_scatter2d(p2d, fig, sub=(1, 2, 1))
-    core.plot_response_coord(ax1, ax2, fig)
-
-    if args.debug:
-        core.mkdir_r('debug')
-        with open('./debug/uv2xyz.txt', 'w') as f:
-            f.write('pt1    pt2    pt3d\n')
-            for i in range(len(pt1)):
-                f.write('{p1}    {p2}    {p3d}\n'.format(
-                    p1=pt1[i], p2=pt2[i], p3d=p3d[i]
-                ))
-    pass
+    np.save(path.split('.')[0], (pt1, pt2))
+    logging.info('过滤结果保存到二进制文件: {}'.format(path.split('.')[0] + '.npy'))
